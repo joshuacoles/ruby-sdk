@@ -235,7 +235,7 @@ module MCP
     end
 
     def list_tools(request)
-      @tools.map { |_, tool| tool.to_h }
+      @tools.map { |_, tool| tool.to_h(server_context: server_context) }
     end
 
     def call_tool(request)
@@ -249,18 +249,21 @@ module MCP
       arguments = request[:arguments] || {}
       add_instrumentation_data(tool_name:)
 
-      if tool.input_schema&.missing_required_arguments?(arguments)
+      # Get context-resolved schema
+      resolved_schema = tool.input_schema_value(server_context: server_context)
+
+      if resolved_schema&.missing_required_arguments?(arguments)
         add_instrumentation_data(error: :missing_required_arguments)
         raise RequestHandlerError.new(
-          "Missing required arguments: #{tool.input_schema.missing_required_arguments(arguments).join(", ")}",
+          "Missing required arguments: #{resolved_schema.missing_required_arguments(arguments).join(", ")}",
           request,
           error_type: :missing_required_arguments,
         )
       end
 
-      if configuration.validate_tool_call_arguments && tool.input_schema
+      if configuration.validate_tool_call_arguments && resolved_schema
         begin
-          tool.input_schema.validate_arguments(arguments)
+          resolved_schema.validate_arguments(arguments)
         rescue Tool::InputSchema::ValidationError => e
           add_instrumentation_data(error: :invalid_schema)
           raise RequestHandlerError.new(e.message, request, error_type: :invalid_schema)

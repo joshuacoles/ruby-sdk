@@ -1,5 +1,13 @@
 # frozen_string_literal: true
 
+# Example MCP server demonstrating context-dependent tool schemas
+#
+# To test different user roles:
+# - Regular user: ruby examples/stdio_server.rb
+# - Admin user: USER_ROLE=admin ruby examples/stdio_server.rb
+#
+# The AdminTool will show different input schemas and behavior based on the user role.
+
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 require "mcp"
 require "mcp/server/transports/stdio_transport"
@@ -21,6 +29,64 @@ class ExampleTool < MCP::Tool
         type: "text",
         text: "The sum of #{a} and #{b} is #{a + b}",
       }])
+    end
+  end
+end
+
+# Create a context-dependent tool that changes schema based on user permissions
+class AdminTool < MCP::Tool
+  description "A tool with context-dependent schema based on user role"
+  
+  input_schema do |server_context|
+    user_role = server_context&.dig(:user, :role)
+    
+    if user_role == "admin"
+      {
+        properties: {
+          action: { 
+            type: "string", 
+            enum: ["deploy", "restart", "configure", "monitor"]
+          },
+          target: { 
+            type: "string",
+            description: "Target environment (production, staging, etc.)"
+          },
+          force: { 
+            type: "boolean", 
+            description: "Force the action without confirmation"
+          }
+        },
+        required: ["action", "target"]
+      }
+    else
+      {
+        properties: {
+          action: { 
+            type: "string", 
+            enum: ["status", "logs", "metrics"]
+          }
+        },
+        required: ["action"]
+      }
+    end
+  end
+
+  class << self
+    def call(action:, target: nil, force: false, server_context: nil)
+      user_role = server_context&.dig(:user, :role) || "user"
+      
+      case user_role
+      when "admin"
+        MCP::Tool::Response.new([{
+          type: "text",
+          text: "Admin action '#{action}' executed on '#{target}' (force: #{force})"
+        }])
+      else
+        MCP::Tool::Response.new([{
+          type: "text", 
+          text: "User action '#{action}' executed (read-only access)"
+        }])
+      end
     end
   end
 end
@@ -50,12 +116,21 @@ class ExamplePrompt < MCP::Prompt
   end
 end
 
-# Set up the server
+# Set up the server with context
+# In a real application, you would determine the user context from authentication
+user_context = {
+  user: {
+    id: "user123",
+    role: ENV["USER_ROLE"] || "user" # Try: USER_ROLE=admin ruby examples/stdio_server.rb
+  }
+}
+
 server = MCP::Server.new(
   name: "example_server",
   version: "1.0.0",
-  tools: [ExampleTool],
+  tools: [ExampleTool, AdminTool],
   prompts: [ExamplePrompt],
+  server_context: user_context,
   resources: [
     MCP::Resource.new(
       uri: "https://test_resource.invalid",

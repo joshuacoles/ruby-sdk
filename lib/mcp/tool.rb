@@ -13,12 +13,12 @@ module MCP
         raise NotImplementedError, "Subclasses must implement call"
       end
 
-      def to_h
+      def to_h(server_context: nil)
         result = {
           name: name_value,
           title: title_value,
           description: description_value,
-          inputSchema: input_schema_value.to_h,
+          inputSchema: input_schema_value(server_context: server_context).to_h,
         }
         result[:annotations] = annotations_value.to_h if annotations_value
         result
@@ -30,6 +30,7 @@ module MCP
         subclass.instance_variable_set(:@title_value, nil)
         subclass.instance_variable_set(:@description_value, nil)
         subclass.instance_variable_set(:@input_schema_value, nil)
+        subclass.instance_variable_set(:@input_schema_generator, nil)
         subclass.instance_variable_set(:@annotations_value, nil)
       end
 
@@ -45,8 +46,21 @@ module MCP
         @name_value || StringUtils.handle_from_class_name(name)
       end
 
-      def input_schema_value
-        @input_schema_value || InputSchema.new
+      def input_schema_value(server_context: nil)
+        if @input_schema_generator
+          schema_def = @input_schema_generator.call(server_context)
+          if schema_def.is_a?(Hash)
+            properties = schema_def[:properties] || schema_def["properties"] || {}
+            required = schema_def[:required] || schema_def["required"] || []
+            InputSchema.new(properties:, required:)
+          elsif schema_def.is_a?(InputSchema)
+            schema_def
+          else
+            raise ArgumentError, "Schema generator must return Hash or InputSchema, got #{schema_def.class}"
+          end
+        else
+          @input_schema_value || InputSchema.new
+        end
       end
 
       def title(value = NOT_SET)
@@ -65,9 +79,11 @@ module MCP
         end
       end
 
-      def input_schema(value = NOT_SET)
-        if value == NOT_SET
+      def input_schema(value = NOT_SET, &block)
+        if value == NOT_SET && !block
           input_schema_value
+        elsif block
+          @input_schema_generator = block
         elsif value.is_a?(Hash)
           properties = value[:properties] || value["properties"] || {}
           required = value[:required] || value["required"] || []
