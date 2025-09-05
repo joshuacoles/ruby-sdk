@@ -35,7 +35,15 @@ end
 
 # Create a context-dependent tool that changes schema based on user permissions
 class AdminTool < MCP::Tool
-  description "A tool with context-dependent schema based on user role"
+  description do |server_context|
+    user_role = server_context&.dig(:user, :role)
+    
+    if user_role == "admin"
+      "Administrative tool with full system access - deploy, restart, configure, and monitor production systems"
+    else
+      "User monitoring tool with read-only access to view system status, logs, and basic metrics"
+    end
+  end
   
   input_schema do |server_context|
     user_role = server_context&.dig(:user, :role)
@@ -93,7 +101,15 @@ end
 
 # Create a simple prompt
 class ExamplePrompt < MCP::Prompt
-  description "A simple example prompt that echoes back its arguments"
+  description do |server_context|
+    user_role = server_context&.dig(:user, :role)
+    
+    if user_role == "admin"
+      "Administrative prompt with enhanced templating and system integration capabilities"
+    else
+      "Standard user prompt for basic text processing and formatting tasks"
+    end
+  end
   arguments [
     MCP::Prompt::Argument.new(
       name: "message",

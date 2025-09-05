@@ -278,7 +278,7 @@ module MCP
     end
 
     def list_prompts(request)
-      @prompts.map { |_, prompt| prompt.to_h }
+      @prompts.map { |_, prompt| prompt.to_h(server_context: server_context) }
     end
 
     def get_prompt(request)

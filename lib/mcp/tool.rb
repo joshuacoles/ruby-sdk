@@ -17,7 +17,7 @@ module MCP
         result = {
           name: name_value,
           title: title_value,
-          description: description_value,
+          description: description_value(server_context: server_context),
           inputSchema: input_schema_value(server_context: server_context).to_h,
         }
         result[:annotations] = annotations_value.to_h if annotations_value
@@ -29,6 +29,7 @@ module MCP
         subclass.instance_variable_set(:@name_value, nil)
         subclass.instance_variable_set(:@title_value, nil)
         subclass.instance_variable_set(:@description_value, nil)
+        subclass.instance_variable_set(:@description_generator, nil)
         subclass.instance_variable_set(:@input_schema_value, nil)
         subclass.instance_variable_set(:@input_schema_generator, nil)
         subclass.instance_variable_set(:@annotations_value, nil)
@@ -71,11 +72,21 @@ module MCP
         end
       end
 
-      def description(value = NOT_SET)
-        if value == NOT_SET
-          @description_value
+      def description(value = NOT_SET, &block)
+        if value == NOT_SET && !block
+          description_value
+        elsif block
+          @description_generator = block
         else
           @description_value = value
+        end
+      end
+
+      def description_value(server_context: nil)
+        if @description_generator
+          @description_generator.call(server_context)
+        else
+          @description_value
         end
       end
 
